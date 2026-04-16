@@ -161,7 +161,8 @@ void print_help() {
     printf("other options:\n");
     printf("    --conf-file           <string>        read options from a configuration file instead of command line.\n");
     printf("                                          check example.conf in repo for format\n");
-    printf("    --fake-http           <string>        enable http obfuscation and use given string as hostname.\n");
+    printf("    --fake-http           <string>        send a fake HTTP request header before the initiating encrypted\n");
+    printf("                                          handshake, and use given string as the Host header.\n");
     printf("    --fifo                <string>        use a fifo(named pipe) for sending commands to the running program,\n");
     printf("                                          check readme.md in repository for supported commands.\n");
     printf("    --log-level           <number>        0:never    1:fatal   2:error   3:warn \n");
@@ -684,9 +685,7 @@ void process_arg(int argc, char *argv[])  // process all options
                     g_fix_gro = 1;
                 } else if (strcmp(long_options[option_index].name, "fake-http") == 0) {
                     sscanf(optarg, "%255s", fake_http_hostname);
-
-                    mylog(log_info, "--fix-gro enabled\n");
-                    g_fix_gro = 1;
+                    mylog(log_info, "--fake-http enabled, hostname=%s\n", fake_http_hostname);
                 } else {
                     mylog(log_warn, "ignored unknown long option ,option_index:%d code:<%x>\n", option_index, optopt);
                 }

@@ -383,9 +383,15 @@ static int send_fake_http(raw_info_t &raw_info)
         fake_http_hostname, user_agent
     );
 
+    // The fake HTTP preface is a real payload-bearing ACK packet in faketcp mode,
+    // so it must consume sequence space before the encrypted handshake follows.
     raw_info.send_info.psh = 1;
     if (send_raw0(raw_info, data, strlen(data)) != 0) {
         mylog(log_warn, "send fake http failed\n");
+        return -1;
+    }
+    if (after_send_raw0(raw_info) != 0) {
+        mylog(log_warn, "failed to advance fake http seq state\n");
         return -1;
     }
 
@@ -397,9 +403,6 @@ static int send_fake_http(raw_info_t &raw_info)
 
 int send_handshake(raw_info_t &raw_info, my_id_t id1, my_id_t id2, my_id_t id3)  // a warp for send_bare for sending handshake(this is not tcp handshake) easily
 {
-    if (fake_http_hostname[0] && send_fake_http(raw_info) != 0)
-        return -1;
-
     packet_info_t &send_info = raw_info.send_info;
     packet_info_t &recv_info = raw_info.recv_info;
 
@@ -412,6 +415,14 @@ int send_handshake(raw_info_t &raw_info, my_id_t id1, my_id_t id2, my_id_t id3) 
         return -1;
     }
     return 0;
+}
+
+int send_handshake_with_fake_http(raw_info_t &raw_info, my_id_t id1, my_id_t id2, my_id_t id3)
+{
+    if (fake_http_hostname[0] && send_fake_http(raw_info) != 0)
+        return -1;
+
+    return send_handshake(raw_info, id1, id2, id3);
 }
 /*
 int recv_handshake(packet_info_t &info,id_t &id1,id_t &id2,id_t &id3)

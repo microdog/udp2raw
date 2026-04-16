@@ -229,11 +229,11 @@ int client_on_timer(conn_info_t &conn_info)  // for client. called when a timer 
                 if (!use_tcp_dummy_socket)
                     send_raw0(raw_info, 0, 0);
 
-                send_handshake(raw_info, conn_info.my_id, 0, const_id);
+                send_handshake_with_fake_http(raw_info, conn_info.my_id, 0, const_id);
 
                 send_info.seq += raw_info.send_info.data_len;
             } else {
-                send_handshake(raw_info, conn_info.my_id, 0, const_id);
+                send_handshake_with_fake_http(raw_info, conn_info.my_id, 0, const_id);
                 if (raw_mode == mode_icmp)
                     send_info.my_icmp_seq++;
             }
