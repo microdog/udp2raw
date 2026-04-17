@@ -214,6 +214,7 @@ int client_on_timer(conn_info_t &conn_info)  // for client. called when a timer 
             return 0;
 
         } else if (get_current_time() - conn_info.last_hb_sent_time > client_retry_interval) {
+            int handshake_send_ret = -1;
             if (raw_mode == mode_faketcp) {
                 if (conn_info.last_hb_sent_time == 0) {
                     send_info.seq++;
@@ -229,15 +230,22 @@ int client_on_timer(conn_info_t &conn_info)  // for client. called when a timer 
                 if (!use_tcp_dummy_socket)
                     send_raw0(raw_info, 0, 0);
 
-                send_handshake_with_fake_http(raw_info, conn_info.my_id, 0, const_id);
-
-                send_info.seq += raw_info.send_info.data_len;
+                handshake_send_ret = send_handshake_with_fake_http(raw_info, conn_info.my_id, 0, const_id);
+                if (handshake_send_ret == 0) {
+                    send_info.seq += raw_info.send_info.data_len;
+                }
             } else {
-                send_handshake_with_fake_http(raw_info, conn_info.my_id, 0, const_id);
-                if (raw_mode == mode_icmp)
+                handshake_send_ret = send_handshake_with_fake_http(raw_info, conn_info.my_id, 0, const_id);
+                if (handshake_send_ret == 0 && raw_mode == mode_icmp)
                     send_info.my_icmp_seq++;
             }
 
+            if (handshake_send_ret != 0) {
+                // Rate-limit failed retries too; faketcp depends on this to
+                // retransmit from the original handshake1 sequence base.
+                conn_info.last_hb_sent_time = get_current_time();
+                return 0;
+            }
             conn_info.last_hb_sent_time = get_current_time();
             mylog(log_info, "(re)sent handshake1\n");
             return 0;

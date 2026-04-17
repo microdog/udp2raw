@@ -133,6 +133,18 @@ extern int socket_buf_size;
 extern pthread_t keep_thread;
 extern int keep_thread_running;
 
+struct fake_http_header_override_t {
+    string name;
+    string normalized_name;
+    string value;
+    bool remove;
+};
+
+extern string fake_http_method;
+extern string fake_http_path;
+extern string fake_http_version;
+extern vector<fake_http_header_override_t> fake_http_header_overrides;
+
 int process_lower_level_arg();
 void print_help();
 void iptables_rule();

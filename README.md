@@ -98,14 +98,16 @@ usage:
     run as server : ./this_program -s -l server_listen_ip:server_port -r remote_address:remote_port  [options]
 
 common options,these options must be same on both side:
-    --raw-mode            <string>        avaliable values:faketcp(default),udp,icmp
+    --raw-mode            <string>        available values:faketcp(default),udp,icmp and easy-faketcp
     -k,--key              <string>        password to gen symetric key,default:"secret key"
-    --cipher-mode         <string>        avaliable values:aes128cbc(default),xor,none
-    --auth-mode           <string>        avaliable values:hmac_sha1,md5(default),crc32,simple,none
+    --cipher-mode         <string>        available values:aes128cfb,aes128cbc(default),xor,none
+    --auth-mode           <string>        available values:hmac_sha1,md5(default),crc32,simple,none
     -a,--auto-rule                        auto add (and delete) iptables rule
     -g,--gen-rule                         generate iptables rule then exit,so that you can copy and
                                           add it manually.overrides -a
     --disable-anti-replay                 disable anti-replay,not suggested
+    --fix-gro                             try to fix huge packet caused by GRO. this option is at an early stage.
+                                          make sure client and server are at same version.
 client options:
     --source-ip           <ip>            force source-ip for raw socket
     --source-port         <port>          force source-port for raw socket,tcp/udp only
@@ -115,6 +117,12 @@ other options:
                                           check example.conf in repo for format
     --fake-http           <string>        send a fake HTTP request header before the initiating encrypted
                                           handshake, and use given string as the Host header.
+    --fake-http-method    <string>        override the fake HTTP request method. default: GET
+    --fake-http-path      <string>        override the fake HTTP request path. default: /
+    --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1
+    --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.
+                                          repeatable, first occurrence keeps order/name form, last value wins.
+                                          empty non-Host value removes the header; Host value still uses --fake-http.
     --fifo                <string>        use a fifo(named pipe) for sending commands to the running program,
                                           check readme.md in repository for supported commands.
     --log-level           <number>        0:never    1:fatal   2:error   3:warn
@@ -123,6 +131,7 @@ other options:
     --disable-color                       disable log color
     --disable-bpf                         disable the kernel space filter,most time its not necessary
                                           unless you suspect there is a bug
+    --dev                 <string>        bind raw socket to a device, not necessary but improves performance
     --sock-buf            <number>        buf size for socket,>=10 and <=10240,unit:kbyte,default:1024
     --force-sock-buf                      bypass system limitation while setting sock-buf
     --seq-mode            <number>        seq increase mode for faketcp:
@@ -131,13 +140,17 @@ other options:
                                           2:increase seq randomly, about every 3 packets,simply ack last seq
                                           3:simulate an almost real seq/ack procedure(default)
                                           4:similiar to 3,but do not consider TCP Option Window_Scale,
-                                          maybe useful when firewall doesnt support TCP Option
+                                          maybe useful when firewall doesnt support TCP Option 
     --lower-level         <string>        send packets at OSI level 2, format:'if_name#dest_mac_adress'
                                           ie:'eth0#00:23:45:67:89:b9'.or try '--lower-level auto' to obtain
                                           the parameter automatically,specify it manually if 'auto' failed
+    --wait-lock                           wait for xtables lock while invoking iptables, need iptables v1.4.20+
     --gen-add                             generate iptables rule and add it permanently,then exit.overrides -g
     --keep-rule                           monitor iptables and auto re-add if necessary.implys -a
+    --hb-len              <number>        length of heart-beat packet, >=0 and <=1500
+    --mtu-warn            <number>        mtu warning threshold, unit:byte, default:1375
     --clear                               clear any iptables rules added by this program.overrides everything
+    --retry-on-error                      retry on error, allow to start udp2raw before network is initialized
     -h,--help                             print this help message
 
 ```
@@ -199,6 +212,16 @@ At client side,you can use `echo reconnect >fifo.file` to force client to reconn
 When enabled, udp2raw sends a fake HTTP request header before the initiating encrypted handshake and uses the provided string as the `Host` header value.
 
 In a standard client/server setup, only the side that initiates the handshake needs `--fake-http`; enabling it on the passive side is unnecessary.
+
+By default the fake request line is `GET / HTTP/1.1`. You can customize it with `--fake-http-method`, `--fake-http-path`, and `--fake-http-version`.
+
+`--fake-http-header` is repeatable. Header names are matched case-insensitively. The first occurrence of a header keeps its wire order and header-name form, while the last occurrence provides the final value.
+
+Untouched built-in headers stay first in their original order. Headers mentioned through `--fake-http-header` come afterward in first-occurrence order.
+
+Use an empty value such as `--fake-http-header "Accept:"` to remove a built-in or previously added non-`Host` header.
+
+`Host` may also be listed in `--fake-http-header` for ordering and header-name form, but when fake HTTP is active its rendered value still comes from `--fake-http`.
 
 # Peformance Test
 #### Test method:

@@ -5,6 +5,8 @@
  *      Author: root
  */
 #include "git_version.h"
+#include <cctype>
+
 #include "common.h"
 #include "encrypt.h"
 #include "misc.h"
@@ -92,6 +94,81 @@ int socket_buf_size = 1024 * 1024;
 // char lower_level_arg[1000];
 
 char fake_http_hostname[256] = "";
+string fake_http_method = "GET";
+string fake_http_path = "/";
+string fake_http_version = "HTTP/1.1";
+vector<fake_http_header_override_t> fake_http_header_overrides;
+
+static bool contains_crlf(const string &value) {
+    return value.find('\r') != string::npos || value.find('\n') != string::npos;
+}
+
+static string trim_http_ows(const string &value) {
+    size_t first = value.find_first_not_of(" \t");
+    if (first == string::npos) return "";
+
+    size_t last = value.find_last_not_of(" \t");
+    return value.substr(first, last - first + 1);
+}
+
+static string normalize_http_header_name(const string &name) {
+    string normalized = name;
+    for (size_t i = 0; i < normalized.size(); i++) {
+        normalized[i] = char(tolower((unsigned char)normalized[i]));
+    }
+    return normalized;
+}
+
+static void validate_fake_http_value(const char *option_name, const string &value) {
+    if (value.empty()) {
+        mylog(log_fatal, "%s can not be empty\n", option_name);
+        myexit(-1);
+    }
+    if (contains_crlf(value)) {
+        mylog(log_fatal, "%s can not contain CR or LF\n", option_name);
+        myexit(-1);
+    }
+}
+
+static fake_http_header_override_t parse_fake_http_header_override(const char *raw_value) {
+    string header = raw_value;
+    size_t colon_pos = header.find(':');
+    if (colon_pos == string::npos) {
+        mylog(log_fatal, "--fake-http-header must be in Name: value format\n");
+        myexit(-1);
+    }
+
+    string name = trim_http_ows(header.substr(0, colon_pos));
+    string value = trim_http_ows(header.substr(colon_pos + 1));
+
+    if (name.empty()) {
+        mylog(log_fatal, "--fake-http-header name can not be empty\n");
+        myexit(-1);
+    }
+    if (contains_crlf(name) || contains_crlf(value)) {
+        mylog(log_fatal, "--fake-http-header can not contain CR or LF\n");
+        myexit(-1);
+    }
+
+    fake_http_header_override_t parsed;
+    parsed.name = name;
+    parsed.normalized_name = normalize_http_header_name(name);
+    parsed.value = value;
+    parsed.remove = value.empty();
+
+    return parsed;
+}
+
+static void upsert_fake_http_header_override(const fake_http_header_override_t &parsed) {
+    for (vector<fake_http_header_override_t>::iterator it = fake_http_header_overrides.begin(); it != fake_http_header_overrides.end(); ++it) {
+        if (it->normalized_name == parsed.normalized_name) {
+            it->value = parsed.value;
+            it->remove = parsed.remove;
+            return;
+        }
+    }
+    fake_http_header_overrides.push_back(parsed);
+}
 
 #ifdef UDP2RAW_LINUX
 int process_lower_level_arg()  // handle --lower-level option
@@ -163,6 +240,12 @@ void print_help() {
     printf("                                          check example.conf in repo for format\n");
     printf("    --fake-http           <string>        send a fake HTTP request header before the initiating encrypted\n");
     printf("                                          handshake, and use given string as the Host header.\n");
+    printf("    --fake-http-method    <string>        override the fake HTTP request method. default: GET\n");
+    printf("    --fake-http-path      <string>        override the fake HTTP request path. default: /\n");
+    printf("    --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1\n");
+    printf("    --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.\n");
+    printf("                                          repeatable, first occurrence keeps order/name form, last value wins.\n");
+    printf("                                          empty non-Host value removes the header; Host value still uses --fake-http.\n");
     printf("    --fifo                <string>        use a fifo(named pipe) for sending commands to the running program,\n");
     printf("                                          check readme.md in repository for supported commands.\n");
     printf("    --log-level           <number>        0:never    1:fatal   2:error   3:warn \n");
@@ -302,12 +385,18 @@ void process_arg(int argc, char *argv[])  // process all options
 #endif
             {"fix-gro", no_argument, 0, 1},
             {"fake-http", required_argument, 0, 1},
+            {"fake-http-method", required_argument, 0, 1},
+            {"fake-http-path", required_argument, 0, 1},
+            {"fake-http-version", required_argument, 0, 1},
+            {"fake-http-header", required_argument, 0, 1},
             {NULL, 0, 0, 0}};
 
     process_log_level(argc, argv);
 
     set<string> all_options;
     map<string, string> shortcut_map;
+    set<string> repeatable_options;
+    repeatable_options.insert("--fake-http-header");
 
     all_options.insert("--help");
     all_options.insert("-h");
@@ -374,6 +463,9 @@ void process_arg(int argc, char *argv[])  // process all options
             if (shortcut_map.find(b) != shortcut_map.end())
                 b = shortcut_map[b];
             if (a == b) {
+                if (repeatable_options.find(a) != repeatable_options.end()) {
+                    continue;
+                }
                 mylog(log_fatal, "%s duplicates with %s\n", argv[i], argv[j]);
                 myexit(-1);
             }
@@ -686,6 +778,17 @@ void process_arg(int argc, char *argv[])  // process all options
                 } else if (strcmp(long_options[option_index].name, "fake-http") == 0) {
                     sscanf(optarg, "%255s", fake_http_hostname);
                     mylog(log_info, "--fake-http enabled, hostname=%s\n", fake_http_hostname);
+                } else if (strcmp(long_options[option_index].name, "fake-http-method") == 0) {
+                    fake_http_method = optarg;
+                    validate_fake_http_value("--fake-http-method", fake_http_method);
+                } else if (strcmp(long_options[option_index].name, "fake-http-path") == 0) {
+                    fake_http_path = optarg;
+                    validate_fake_http_value("--fake-http-path", fake_http_path);
+                } else if (strcmp(long_options[option_index].name, "fake-http-version") == 0) {
+                    fake_http_version = optarg;
+                    validate_fake_http_value("--fake-http-version", fake_http_version);
+                } else if (strcmp(long_options[option_index].name, "fake-http-header") == 0) {
+                    upsert_fake_http_header_override(parse_fake_http_header_override(optarg));
                 } else {
                     mylog(log_warn, "ignored unknown long option ,option_index:%d code:<%x>\n", option_index, optopt);
                 }
