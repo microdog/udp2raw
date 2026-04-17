@@ -248,6 +248,12 @@ static void validate_fake_http_value(const char *option_name, const string &valu
         mylog(log_fatal, "%s can not contain CR or LF\n", option_name);
         myexit(-1);
     }
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (isspace((unsigned char)value[i])) {
+            mylog(log_fatal, "%s can not contain whitespace\n", option_name);
+            myexit(-1);
+        }
+    }
 }
 
 static fake_http_header_override_t parse_fake_http_header_override(const char *raw_value) {
