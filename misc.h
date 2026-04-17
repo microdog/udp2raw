@@ -140,10 +140,15 @@ struct fake_http_header_override_t {
     bool remove;
 };
 
+extern char fake_http_hostname[256];
 extern string fake_http_method;
 extern string fake_http_path;
 extern string fake_http_version;
 extern vector<fake_http_header_override_t> fake_http_header_overrides;
+extern const size_t fake_http_max_request_len;
+
+int build_fake_http_request(string &request);
+void validate_fake_http_config_or_die();
 
 int process_lower_level_arg();
 void print_help();

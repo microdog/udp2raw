@@ -121,6 +121,8 @@ other options:
     --fake-http-path      <string>        override the fake HTTP request path. default: /
     --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1
     --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.
+                                          the fake-http customization flags above are accepted without --fake-http,
+                                          but have no effect unless it is enabled.
                                           repeatable, first occurrence keeps order/name form, last value wins.
                                           empty non-Host value removes the header; Host value still uses --fake-http.
     --fifo                <string>        use a fifo(named pipe) for sending commands to the running program,
@@ -216,6 +218,8 @@ In a standard client/server setup, only the side that initiates the handshake ne
 By default the fake request line is `GET / HTTP/1.1`. You can customize it with `--fake-http-method`, `--fake-http-path`, and `--fake-http-version`.
 
 `--fake-http-header` is repeatable. Header names are matched case-insensitively. The first occurrence of a header keeps its wire order and header-name form, while the last occurrence provides the final value.
+
+All fake HTTP customization flags, including `--fake-http-method`, `--fake-http-path`, `--fake-http-version`, and `--fake-http-header`, are accepted without `--fake-http`, but they do nothing unless fake HTTP is enabled.
 
 Untouched built-in headers stay first in their original order. Headers mentioned through `--fake-http-header` come afterward in first-occurrence order.
 

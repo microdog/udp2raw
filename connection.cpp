@@ -15,8 +15,6 @@ const int disable_conn_clear = 0;  // a raw connection is called conn.
 
 conn_manager_t conn_manager;
 
-extern char fake_http_hostname[256];
-
 anti_replay_seq_t anti_replay_t::get_new_seq_for_send() {
     return anti_replay_seq++;
 }
@@ -368,92 +366,18 @@ int recv_bare(raw_info_t &raw_info, char *&data, int &len)  // recv function wit
 
 static int send_fake_http(raw_info_t &raw_info)
 {
-    static const char *user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                    "Chrome/120.0.0.0 Safari/537.36";
-
-    struct rendered_header_t {
-        string name;
-        string normalized_name;
-        string value;
-        bool remove;
-    };
-
-    char data[1500];
-    vector<rendered_header_t> headers;
-    vector<string> cli_mentioned_header_names;
     bool psh_old = raw_info.send_info.psh;
     string request;
 
-    const rendered_header_t built_in_headers[] = {
-        {"Host", "host", fake_http_hostname, false},
-        {"User-Agent", "user-agent", user_agent, false},
-        {"Accept", "accept", "*/*", false},
-    };
-    const size_t built_in_header_count = sizeof(built_in_headers) / sizeof(built_in_headers[0]);
-
-    for (vector<fake_http_header_override_t>::const_iterator it = fake_http_header_overrides.begin(); it != fake_http_header_overrides.end(); ++it) {
-        cli_mentioned_header_names.push_back(it->normalized_name);
-    }
-
-    for (size_t i = 0; i < built_in_header_count; ++i) {
-        bool cli_mentioned = false;
-        for (vector<string>::const_iterator it = cli_mentioned_header_names.begin(); it != cli_mentioned_header_names.end(); ++it) {
-            if (*it == built_in_headers[i].normalized_name) {
-                cli_mentioned = true;
-                break;
-            }
-        }
-        if (!cli_mentioned) {
-            headers.push_back(built_in_headers[i]);
-        }
-    }
-
-    for (vector<fake_http_header_override_t>::const_iterator it = fake_http_header_overrides.begin(); it != fake_http_header_overrides.end(); ++it) {
-        bool is_built_in = false;
-        for (size_t i = 0; i < built_in_header_count; ++i) {
-            if (it->normalized_name == built_in_headers[i].normalized_name) {
-                is_built_in = true;
-                if (it->normalized_name == "host") {
-                    headers.push_back({it->name, it->normalized_name, fake_http_hostname, false});
-                } else if (!it->remove) {
-                    headers.push_back({it->name, it->normalized_name, it->value, false});
-                }
-                break;
-            }
-        }
-        if (!is_built_in && !it->remove) {
-            headers.push_back({it->name, it->normalized_name, it->value, false});
-        }
-    }
-
-    request.reserve(sizeof(data));
-    request += fake_http_method;
-    request += " ";
-    request += fake_http_path;
-    request += " ";
-    request += fake_http_version;
-    request += "\r\n";
-
-    for (vector<rendered_header_t>::const_iterator it = headers.begin(); it != headers.end(); ++it) {
-        if (it->remove) continue;
-        request += it->name;
-        request += ": ";
-        request += it->value;
-        request += "\r\n";
-    }
-    request += "\r\n";
-
-    if (request.size() >= sizeof(data)) {
-        mylog(log_warn, "fake http request too large: %zu bytes\n", request.size());
+    if (build_fake_http_request(request) != 0) {
+        mylog(log_warn, "send fake http failed during request rendering\n");
         return -1;
     }
-    memcpy(data, request.c_str(), request.size() + 1);
 
     // The fake HTTP preface is a real payload-bearing ACK packet in faketcp mode,
     // so it must consume sequence space before the encrypted handshake follows.
     raw_info.send_info.psh = 1;
-    if (send_raw0(raw_info, data, request.size()) != 0) {
+    if (send_raw0(raw_info, request.c_str(), request.size()) != 0) {
         mylog(log_warn, "send fake http failed\n");
         raw_info.send_info.psh = psh_old;
         return -1;

@@ -134,6 +134,8 @@ other options:
     --fake-http-path      <string>        override the fake HTTP request path. default: /
     --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1
     --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.
+                                          the fake-http customization flags above are accepted without --fake-http,
+                                          but have no effect unless it is enabled.
                                           repeatable, first occurrence keeps order/name form, last value wins.
                                           empty non-Host value removes the header; Host value still uses --fake-http.
     --fifo                <string>        use a fifo(named pipe) for sending commands to the running program,
@@ -251,6 +253,8 @@ server端也可以用`--lower-level auto` 来尝试自动获得参数，如果�
 默认的伪造请求行是 `GET / HTTP/1.1`。可以分别通过 `--fake-http-method`、`--fake-http-path` 和 `--fake-http-version` 自定义请求方法、路径和 HTTP 版本。
 
 `--fake-http-header` 可以用于内置头，包括 `Host`。头名称按大小写不敏感方式匹配：第一次出现决定它在报文里的顺序和名称形式，最后一次出现决定最终值。
+
+所有 fake HTTP 自定义参数，包括 `--fake-http-method`、`--fake-http-path`、`--fake-http-version` 和 `--fake-http-header`，在不带 `--fake-http` 时也会被接受，但只有启用 fake HTTP 后才会生效。
 
 没有在 CLI 中提到的内置头会继续按原来的默认顺序排在前面；通过 `--fake-http-header` 提到的头会按第一次出现的顺序排在后面。
 

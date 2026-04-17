@@ -98,6 +98,126 @@ string fake_http_method = "GET";
 string fake_http_path = "/";
 string fake_http_version = "HTTP/1.1";
 vector<fake_http_header_override_t> fake_http_header_overrides;
+const size_t fake_http_max_request_len = 1428;
+
+int build_fake_http_request(string &request) {
+    static const char *user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                    "Chrome/120.0.0.0 Safari/537.36";
+
+    struct rendered_header_t {
+        string name;
+        string normalized_name;
+        string value;
+        bool remove;
+    };
+
+    vector<rendered_header_t> headers;
+    vector<string> cli_mentioned_header_names;
+
+    const rendered_header_t built_in_headers[] = {
+        {"Host", "host", fake_http_hostname, false},
+        {"User-Agent", "user-agent", user_agent, false},
+        {"Accept", "accept", "*/*", false},
+    };
+    const size_t built_in_header_count = sizeof(built_in_headers) / sizeof(built_in_headers[0]);
+
+    request.clear();
+
+    for (vector<fake_http_header_override_t>::const_iterator it = fake_http_header_overrides.begin();
+         it != fake_http_header_overrides.end(); ++it) {
+        cli_mentioned_header_names.push_back(it->normalized_name);
+    }
+
+    for (size_t i = 0; i < built_in_header_count; ++i) {
+        bool cli_mentioned = false;
+        for (vector<string>::const_iterator it = cli_mentioned_header_names.begin();
+             it != cli_mentioned_header_names.end(); ++it) {
+            if (*it == built_in_headers[i].normalized_name) {
+                cli_mentioned = true;
+                break;
+            }
+        }
+        if (!cli_mentioned) {
+            headers.push_back(built_in_headers[i]);
+        }
+    }
+
+    for (vector<fake_http_header_override_t>::const_iterator it = fake_http_header_overrides.begin();
+         it != fake_http_header_overrides.end(); ++it) {
+        bool is_built_in = false;
+        for (size_t i = 0; i < built_in_header_count; ++i) {
+            if (it->normalized_name == built_in_headers[i].normalized_name) {
+                is_built_in = true;
+                if (it->normalized_name == "host") {
+                    headers.push_back({it->name, it->normalized_name, fake_http_hostname, false});
+                } else if (!it->remove) {
+                    headers.push_back({it->name, it->normalized_name, it->value, false});
+                }
+                break;
+            }
+        }
+        if (!is_built_in && !it->remove) {
+            headers.push_back({it->name, it->normalized_name, it->value, false});
+        }
+    }
+
+    request += fake_http_method;
+    request += " ";
+    request += fake_http_path;
+    request += " ";
+    request += fake_http_version;
+    request += "\r\n";
+
+    for (vector<rendered_header_t>::const_iterator it = headers.begin(); it != headers.end(); ++it) {
+        if (it->remove) continue;
+        request += it->name;
+        request += ": ";
+        request += it->value;
+        request += "\r\n";
+    }
+
+    request += "\r\n";
+
+    if (request.size() > fake_http_max_request_len) {
+        mylog(log_warn, "fake http request too large: %zu bytes (limit %zu)\n",
+              request.size(), fake_http_max_request_len);
+        return -1;
+    }
+    return 0;
+}
+
+void validate_fake_http_config_or_die() {
+    if (!fake_http_hostname[0]) return;
+
+    string request;
+    if (build_fake_http_request(request) != 0) {
+        mylog(log_fatal,
+              "fake http request is too large after rendering (%zu bytes, limit %zu)\n",
+              request.size(), fake_http_max_request_len);
+        myexit(-1);
+    }
+}
+
+static void parse_fake_http_hostname_or_die(const char *raw_value) {
+    size_t len = strlen(raw_value);
+    if (len == 0) {
+        mylog(log_fatal, "--fake-http can not be empty\n");
+        myexit(-1);
+    }
+    if (len >= sizeof(fake_http_hostname)) {
+        mylog(log_fatal, "--fake-http is too long (max %zu bytes)\n",
+              sizeof(fake_http_hostname) - 1);
+        myexit(-1);
+    }
+    for (size_t i = 0; i < len; ++i) {
+        if (isspace((unsigned char)raw_value[i])) {
+            mylog(log_fatal, "--fake-http can not contain whitespace\n");
+            myexit(-1);
+        }
+    }
+    memcpy(fake_http_hostname, raw_value, len + 1);
+}
 
 static bool contains_crlf(const string &value) {
     return value.find('\r') != string::npos || value.find('\n') != string::npos;
@@ -244,6 +364,8 @@ void print_help() {
     printf("    --fake-http-path      <string>        override the fake HTTP request path. default: /\n");
     printf("    --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1\n");
     printf("    --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.\n");
+    printf("                                          the fake-http customization flags above are accepted without --fake-http,\n");
+    printf("                                          but have no effect unless it is enabled.\n");
     printf("                                          repeatable, first occurrence keeps order/name form, last value wins.\n");
     printf("                                          empty non-Host value removes the header; Host value still uses --fake-http.\n");
     printf("    --fifo                <string>        use a fifo(named pipe) for sending commands to the running program,\n");
@@ -776,7 +898,7 @@ void process_arg(int argc, char *argv[])  // process all options
                     mylog(log_info, "--fix-gro enabled\n");
                     g_fix_gro = 1;
                 } else if (strcmp(long_options[option_index].name, "fake-http") == 0) {
-                    sscanf(optarg, "%255s", fake_http_hostname);
+                    parse_fake_http_hostname_or_die(optarg);
                     mylog(log_info, "--fake-http enabled, hostname=%s\n", fake_http_hostname);
                 } else if (strcmp(long_options[option_index].name, "fake-http-method") == 0) {
                     fake_http_method = optarg;
@@ -822,6 +944,8 @@ void process_arg(int argc, char *argv[])  // process all options
     if (keep_rule && use_tcp_dummy_socket) {
         mylog(log_error, "--keep-rule is not supposed to be used with easyfaketcp mode, you are likely making a mistake, but we can try to continue\n");
     }
+
+    validate_fake_http_config_or_die();
 
     mylog(log_info, "important variables: ");
 
