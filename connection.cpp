@@ -382,11 +382,9 @@ static int send_fake_http(raw_info_t &raw_info)
         raw_info.send_info.psh = psh_old;
         return -1;
     }
-    if (after_send_raw0(raw_info) != 0) {
-        mylog(log_warn, "failed to advance fake http seq state\n");
-        raw_info.send_info.psh = psh_old;
-        return -1;
-    }
+    // This preface is intended to look like bytes in one TCP stream. Advance
+    // unconditionally here; global seq_mode remains unchanged for normal data.
+    raw_info.send_info.seq += request.size();
 
     usleep(32000);
     raw_info.send_info.psh = psh_old;

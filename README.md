@@ -117,10 +117,12 @@ other options:
                                           check example.conf in repo for format
     --fake-http           <string>        send a fake HTTP request header before the initiating encrypted
                                           handshake, and use given string as the Host header.
+                                          only valid with --raw-mode faketcp.
     --fake-http-method    <string>        override the fake HTTP request method. default: GET
     --fake-http-path      <string>        override the fake HTTP request path. default: /
     --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1
     --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.
+                                          header names must be valid HTTP token names.
                                           the fake-http customization flags above are accepted without --fake-http,
                                           but have no effect unless it is enabled.
                                           repeatable, first occurrence keeps order/name form, last value wins.
@@ -211,13 +213,13 @@ At client side,you can use `echo reconnect >fifo.file` to force client to reconn
 
 ### `--fake-http`
 
-When enabled, udp2raw sends a fake HTTP request header before the initiating encrypted handshake and uses the provided string as the `Host` header value.
+When enabled, udp2raw sends an HTTP-looking TCP request preface before the initiating encrypted handshake and uses the provided string as the `Host` header value. Only valid with `--raw-mode faketcp`.
 
 In a standard client/server setup, only the side that initiates the handshake needs `--fake-http`; enabling it on the passive side is unnecessary.
 
 By default the fake request line is `GET / HTTP/1.1`. You can customize it with `--fake-http-method`, `--fake-http-path`, and `--fake-http-version`.
 
-`--fake-http-header` is repeatable. Header names are matched case-insensitively. The first occurrence of a header keeps its wire order and header-name form, while the last occurrence provides the final value.
+`--fake-http-header` is repeatable. Header names must be valid HTTP token names and are matched case-insensitively. The first occurrence of a header keeps its wire order and header-name form, while the last occurrence provides the final value.
 
 All fake HTTP customization flags, including `--fake-http-method`, `--fake-http-path`, `--fake-http-version`, and `--fake-http-header`, are accepted without `--fake-http`, but they do nothing unless fake HTTP is enabled.
 

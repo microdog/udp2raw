@@ -190,6 +190,11 @@ int build_fake_http_request(string &request) {
 void validate_fake_http_config_or_die() {
     if (!fake_http_hostname[0]) return;
 
+    if (raw_mode != mode_faketcp || use_tcp_dummy_socket) {
+        mylog(log_fatal, "--fake-http is only supported with --raw-mode faketcp\n");
+        myexit(-1);
+    }
+
     string request;
     if (build_fake_http_request(request) != 0) {
         mylog(log_fatal,
@@ -221,6 +226,43 @@ static void parse_fake_http_hostname_or_die(const char *raw_value) {
 
 static bool contains_crlf(const string &value) {
     return value.find('\r') != string::npos || value.find('\n') != string::npos;
+}
+
+static bool is_http_token_char(unsigned char ch) {
+    if ((ch >= '0' && ch <= '9') ||
+        (ch >= 'A' && ch <= 'Z') ||
+        (ch >= 'a' && ch <= 'z')) {
+        return true;
+    }
+
+    switch (ch) {
+        case '!':
+        case '#':
+        case '$':
+        case '%':
+        case '&':
+        case '\'':
+        case '*':
+        case '+':
+        case '-':
+        case '.':
+        case '^':
+        case '_':
+        case '`':
+        case '|':
+        case '~':
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool is_valid_http_token(const string &value) {
+    if (value.empty()) return false;
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (!is_http_token_char((unsigned char)value[i])) return false;
+    }
+    return true;
 }
 
 static string trim_http_ows(const string &value) {
@@ -264,11 +306,15 @@ static fake_http_header_override_t parse_fake_http_header_override(const char *r
         myexit(-1);
     }
 
-    string name = trim_http_ows(header.substr(0, colon_pos));
+    string name = header.substr(0, colon_pos);
     string value = trim_http_ows(header.substr(colon_pos + 1));
 
     if (name.empty()) {
         mylog(log_fatal, "--fake-http-header name can not be empty\n");
+        myexit(-1);
+    }
+    if (!is_valid_http_token(name)) {
+        mylog(log_fatal, "--fake-http-header name must be a valid HTTP token\n");
         myexit(-1);
     }
     if (contains_crlf(name) || contains_crlf(value)) {
@@ -366,10 +412,12 @@ void print_help() {
     printf("                                          check example.conf in repo for format\n");
     printf("    --fake-http           <string>        send a fake HTTP request header before the initiating encrypted\n");
     printf("                                          handshake, and use given string as the Host header.\n");
+    printf("                                          only valid with --raw-mode faketcp.\n");
     printf("    --fake-http-method    <string>        override the fake HTTP request method. default: GET\n");
     printf("    --fake-http-path      <string>        override the fake HTTP request path. default: /\n");
     printf("    --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1\n");
     printf("    --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.\n");
+    printf("                                          header names must be valid HTTP token names.\n");
     printf("                                          the fake-http customization flags above are accepted without --fake-http,\n");
     printf("                                          but have no effect unless it is enabled.\n");
     printf("                                          repeatable, first occurrence keeps order/name form, last value wins.\n");

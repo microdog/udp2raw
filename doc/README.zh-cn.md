@@ -130,10 +130,12 @@ other options:
                                           check example.conf in repo for format
     --fake-http           <string>        send a fake HTTP request header before the initiating encrypted
                                           handshake, and use given string as the Host header.
+                                          only valid with --raw-mode faketcp.
     --fake-http-method    <string>        override the fake HTTP request method. default: GET
     --fake-http-path      <string>        override the fake HTTP request path. default: /
     --fake-http-version   <string>        override the fake HTTP request version. default: HTTP/1.1
     --fake-http-header    <string>        add, override, or remove a fake HTTP header in Name: value format.
+                                          header names must be valid HTTP token names.
                                           the fake-http customization flags above are accepted without --fake-http,
                                           but have no effect unless it is enabled.
                                           repeatable, first occurrence keeps order/name form, last value wins.
@@ -246,13 +248,13 @@ server端也可以用`--lower-level auto` 来尝试自动获得参数，如果�
 
 ### `--fake-http`
 
-启用后，udp2raw 会在发起加密握手前发送一个伪造的 HTTP 请求头，并将提供的字符串作为 `Host` 头的值。
+启用后，udp2raw 会在发起加密握手前发送一个像 HTTP 的 TCP 请求前缀，并将提供的字符串作为 `Host` 头的值。仅在 `--raw-mode faketcp` 下有效。
 
 在标准的 client/server 用法中，只需要在发起握手的一侧启用 `--fake-http`；被动接收握手的一侧不需要开启它。
 
 默认的伪造请求行是 `GET / HTTP/1.1`。可以分别通过 `--fake-http-method`、`--fake-http-path` 和 `--fake-http-version` 自定义请求方法、路径和 HTTP 版本。
 
-`--fake-http-header` 可以用于内置头，包括 `Host`。头名称按大小写不敏感方式匹配：第一次出现决定它在报文里的顺序和名称形式，最后一次出现决定最终值。
+`--fake-http-header` 可以用于内置头，包括 `Host`。Header 名称必须是合法的 HTTP token。头名称按大小写不敏感方式匹配：第一次出现决定它在报文里的顺序和名称形式，最后一次出现决定最终值。
 
 所有 fake HTTP 自定义参数，包括 `--fake-http-method`、`--fake-http-path`、`--fake-http-version` 和 `--fake-http-header`，在不带 `--fake-http` 时也会被接受，但只有启用 fake HTTP 后才会生效。
 
