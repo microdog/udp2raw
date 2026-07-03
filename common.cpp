@@ -1025,7 +1025,9 @@ vector<string> parse_conf_line(const string &s0) {
     vector<string> res;
     // strcpy(buf,(char *)s.c_str());
     while (i >= 0) {
-        if (buf[i] == ' ' || buf[i] == '\t')
+        // also strip trailing CR/LF so CRLF (Windows) conf files don't leave a
+        // stray '\r' on the last token, which strict validators would reject
+        if (buf[i] == ' ' || buf[i] == '\t' || buf[i] == '\r' || buf[i] == '\n')
             buf[i] = 0;
         else
             break;
